@@ -1,2 +1,141 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
+import time
+import getpass
+import random
+
+# Configurações
+DISCORD_EMAIL = 'EMAIL'
+DISCORD_PASSWORD = 'SENHA'
+LINK_CANAL = "https://discord.com/channels/1374191514049188021/1374191514518814734"
+LINK_CANAL_COMUNICADOR = "https://discord.com/channels/1377386902688366592/1377386902688366595"
+LISTA_ALVO = ["Advanced Sprinkler","Godly Sprinkler","Master Sprinkler","Lighting rod"]
+# Inicializa o navegador
+options = webdriver.ChromeOptions()
+options.add_argument("--headless")  # Única alteração feita
+options.add_argument("--disable-notifications")
+options.add_argument("--lang=pt-BR")
+options.add_argument("--disable-gpu")
+options.add_argument("--no-sandbox")
+
+driver = webdriver.Chrome(options=options)
+wait = WebDriverWait(driver, 20)
+actions = ActionChains(driver)
+
+def human_like_delay(min=1, max=3):
+    time.sleep(random.uniform(min, max))
+
+def enviar_mencao(item):
+    try:
+        print(f"\n[ALERTA] Iniciando menção para {item}")
+        
+        # 1. Salva a posição atual (opcional)
+        current_url = driver.current_url
+        
+        # 2. Navega diretamente para o link do canal comunicador
+        driver.get(LINK_CANAL_COMUNICADOR)
+        print("Carregando canal comunicador...")
+        time.sleep(3)  # Espera fixa para carregamento
+        
+        # 3. Encontra e envia a mensagem (seletor universal)
+        message_box = driver.find_element(By.XPATH, '//div[@role="textbox"]')
+        message_box.click()
+        message_box.send_keys(f"@everyone {item}")
+        message_box.send_keys(Keys.ENTER)
+        print(f"Mensagem enviada: @everyone {item}")
+        
+        # 4. Volta EXATAMENTE para o link original
+        driver.get(LINK_CANAL)
+        print("Retornou ao monitoramento")
+        time.sleep(2)  # Espera para estabilizar
+        
+    except Exception as e:
+        print(f"Erro crítico: {e}")
+        # Garante o retorno mesmo com erro
+        driver.get(LINK_CANAL)
+
+try:
+    # Acessa o Discord
+    print("Acessando Discord...")
+    driver.get(LINK_CANAL)
+    human_like_delay()
+
+    # Tela de login (se aparecer)
+    try:
+        # Clica em "Continuar no Navegador" se existir
+        browser_btn = wait.until(EC.element_to_be_clickable(
+            (By.XPATH, "//button[contains(.,'Continuar no Navegador') or contains(.,'Continue in Browser')]")))
+        browser_btn.click()
+        print("Selecionado continuar no navegador")
+        human_like_delay(2, 4)
+    except:
+        print("Pulando tela de seleção de navegador/app")
+
+    # Verifica se precisa fazer login
+    try:
+        email_field = wait.until(EC.presence_of_element_located((By.NAME, "email")))
+        print("Fazendo login...")
+        
+        # Preenche campos diretamente (sem delay)
+        email_field.send_keys(DISCORD_EMAIL)
+        password_field = driver.find_element(By.NAME, "password")
+        password_field.send_keys(DISCORD_PASSWORD)
+        
+        login_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
+        actions.move_to_element(login_btn).click().perform()
+        print("Login realizado")
+    except:
+        print("Pulando tela de login (já está logado?)")
+
+    # Aguarda o canal carregar
+    print("Aguardando carregamento do canal...")
+    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, '[class*="messageContent"]')))
+    print("Canal carregado. Monitoramento iniciado...")
+    
+    # Loop de monitoramento
+    last_processed_message = None
+    while True:
+        try:
+            # Rola para baixo para carregar mensagens
+            driver.execute_script("window.scrollBy(0, 500);")
+            human_like_delay(2, 4)
+            
+            messages = wait.until(EC.presence_of_all_elements_located(
+                (By.CSS_SELECTOR, '[class*="messageContent"]')))
+            
+            # Pega todas as mensagens visíveis
+            all_messages = [msg.text for msg in messages]
+            
+            # Encontra a última mensagem GearStock
+            gearstock_message = None
+            for msg in reversed(all_messages):
+                print(msg)  # Mantive para debug, mas você pode remover se quiser
+    
+                # Verifica cada item da lista
+                for item in LISTA_ALVO:
+                    # Verifica se o item está precedido por @ ou x
+                    if f"@{item}" in msg or f"x{item}" in msg:
+                        #print(f"\n⚠️ ITEM ENCONTRADO: {item}")
+                        enviar_mencao(item)
+                
+                if msg.startswith("GearStock Update"):
+                    gearstock_message = msg
+                    break
+           
+            
+            time.sleep(300)
+            
+        except Exception as e:
+            print(f"\n⚠️ Erro durante monitoramento: {str(e)[:100]}...")
+            print("Tentando novamente em 30 segundos...")
+            time.sleep(30)
+
+except Exception as e:
+    print(f"\n❌ ERRO CRÍTICO: {e}")
+    input("Pressione Enter para fechar...")
+finally:
+    driver.quit()
